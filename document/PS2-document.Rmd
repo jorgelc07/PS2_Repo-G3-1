@@ -1,0 +1,51 @@
+---
+title: 'Problem Set 2: Predicting Poverty'
+author:
+- Gustavo Adolfo Castillo Álvarez (201812166),
+- Alexander Almeida Ramírez (202225165),
+- Jorge Luis Congacha Yunda (201920042) y
+- Jaime Orlando Buitrago González (200612390)
+date: "`r Sys.Date()`"
+output:
+  bookdown::pdf_document2:
+    number_sections: true
+    toc: false
+    fig_width: 3
+    fig_height: 2
+    fig_caption: true
+
+fontsize: 11pt
+geometry: margin=1in
+documentclass: article
+papersize: letter
+lang: es
+colorlinks: true
+header-includes:
+  - \usepackage[utf8]{inputenc}
+  - \usepackage{hyperref}
+  - \hypersetup{urlcolor = blue, citecolor = blue,linkcolor=blue}
+  - \usepackage{floatrow}
+  - \floatsetup[figure]{capposition=top}
+  - \usepackage{longtable}
+  - \usepackage{array}
+  - \usepackage{multirow}
+  - \usepackage{dcolumn}
+  - \usepackage{float}
+
+subtitle: Big Data y Machine Learning para Economía Aplicada
+bibliography: References.bib
+---
+
+# Introducción
+
+# Datos (al final)
+
+# Modelos
+
+## Modelos de Clasificación
+
+## Modelos de Predicción de Ingreso
+
+## Modelos Finales
+
+# Conclusiones
