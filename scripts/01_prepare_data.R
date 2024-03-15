@@ -1,10 +1,10 @@
 ##############################################################################-
 # DATE:
-#   2024/feb/10
+#   2024/march/14
 # AUTHOR:
 #   Gustavo Castilllo
 # DESCRIPTION:
-#   Explore dataset.
+#   Merge the training datasets and export 
 ##############################################################################-
 
 # Prepare workspace
@@ -20,6 +20,10 @@ train_hogares <- fread("stores/raw/train_hogares.csv")
 
 m <- merge.data.table(x = train_personas, y = train_hogares,
                       by = 'id', all = TRUE)
-
 arrow::write_parquet(m, sink = "stores/train_db.parquet")
+
+
+test_personas <- fread("stores/raw/test_personas.csv")
+test_hogares <- fread("stores/raw/test_hogares.csv")
+
 # End
