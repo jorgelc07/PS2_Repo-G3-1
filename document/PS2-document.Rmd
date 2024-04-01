@@ -36,11 +36,17 @@ subtitle: Big Data y Machine Learning para Economía Aplicada
 bibliography: References.bib
 ---
 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.pos = 'H')
+```
+
+
 # Introducción
 
 # Datos (al final)
 
-# Modelos
+# Modelos y resultados
 
 ## Modelos de Clasificación
 
@@ -49,3 +55,8 @@ bibliography: References.bib
 ## Modelos Finales
 
 # Conclusiones
+
+# Referencias bibliográficas
+
+::: {#refs}
+:::
