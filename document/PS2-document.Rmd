@@ -40,6 +40,10 @@ bibliography: References.bib
 
 # Datos (al final)
 
+## Procesamiento de Datos
+
+## Análisis Descriptivo
+
 # Modelos
 
 ## Modelos de Clasificación
