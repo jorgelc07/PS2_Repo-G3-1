@@ -2,6 +2,9 @@
 # Created by https://www.toptal.com/developers/gitignore/api/r,macos,python,microsoftoffice
 # Edit at https://www.toptal.com/developers/gitignore?templates=r,macos,python,microsoftoffice
 
+### Store directory ###
+stores/
+
 ### macOS ###
 # General
 .DS_Store
