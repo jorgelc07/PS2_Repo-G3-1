@@ -46,6 +46,10 @@ knitr::opts_chunk$set(echo = TRUE, fig.pos = 'H')
 
 # Datos (al final)
 
+## Procesamiento de Datos
+
+## Análisis Descriptivo
+
 # Modelos y resultados
 
 ## Modelos de Clasificación
