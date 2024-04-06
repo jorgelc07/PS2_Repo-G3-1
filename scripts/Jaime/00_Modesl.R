@@ -11,6 +11,8 @@
 
 rm (list=ls())
 source("scripts/00_packages.R")
+library(pROC)
+library(MLeval)
 gc()
 
 ############################################################################-
@@ -39,8 +41,6 @@ test$db <- "test"
 
 db <- rbind(test,train, fill=TRUE)
 
-rm(train, test)
-
 x <- c("P6545","P6510",
             "P6580","P6585s1","P6585s2","P6585s3","P6585s4",
             "P6590","P6600","P6620","P6630s1","P6630s2","P6630s3","P6630s4","P6630s6",
@@ -51,7 +51,7 @@ dummy <- function(var){
   case_when({{var}}==1~1,{{var}}==2 | {{var}}==9~0)
 }
 
-model <- db%>%select("id","Pobre","Npersug","Dominio","Orden","db", x)%>%
+model <- db%>%select("id","Pobre","Nper","Dominio","Orden","db", x)%>%
          mutate(across(x,dummy))
 
 count <- function(var){
@@ -60,20 +60,21 @@ count <- function(var){
 
 db <- model%>%summarize(across(x,count), .by=id)
 
-model <- model%>%select("id","Pobre","Npersug","Dominio","Orden","db")%>%
+model <- model%>%select("id","Pobre","Nper","Dominio","Orden","db")%>%
          filter(Orden==1)%>%
          left_join(db)
 
-for (i in 7:length(x)) {
-  model[[i]]<-model[[i]]/model$Npersug 
+for (i in 7:27) {
+  model[[i]]<-model[[i]]/model$Nper 
 }
 
 db <- model
 db$Dominio <- as.factor(db$Dominio)
-db$Pobre <- factor(db$Pobre,
-                   levels=c("0","1"),
-                   labels=c("No", "Yes"))
 
+train <- db%>%filter(db=="train")
+test <- db%>%filter(db=="test")
+
+gc()
 ############################################################################-
 # 2. Defining models ----
 ############################################################################-
@@ -81,8 +82,53 @@ db$Pobre <- factor(db$Pobre,
 model <-formula(paste0("Pobre~","Dominio + ",paste0(x, collapse = " + ")))
 
 ############################################################################-
-# 3. Estimating models ----
+# 3. Estimating Linear regression model ----
 ############################################################################-
+
+rule <- 0.5
+
+lr <- lm(model, 
+         data=train)
+
+train$hat <- fitted(lr)
+
+train <- train%>%mutate(pobre_hat=ifelse(hat>=rule,1,0))
+
+train$Pobre <- factor(train$Pobre,
+                   levels=c("0","1"),
+                   labels=c("No", "Yes"))
+
+train$pobre_hat <- factor(train$pobre_hat,
+                      levels=c("0","1"),
+                      labels=c("No", "Yes"))
+
+confusionMatrix(data = train$pobre_hat, 
+                reference = train$Pobre, 
+                mode = "prec_recall")
+
+roc<-roc(response=as.numeric(train$Pobre),
+         predictor=as.numeric(train$pobre_hat)
+         )
+
+threshold <- coords(roc, x = "best", best.method = "closest.topleft")
+
+train <- train%>%mutate(pobre_hat_adj=ifelse(hat>=threshold$threshold,1,0))
+
+train$pobre_hat_adj<- factor(train$pobre_hat_adj,
+                             levels=c("0","1"),
+                             labels=c("No", "Yes"))
+
+confusionMatrix(data = train$pobre_hat_adj, 
+                reference = train$Pobre, 
+                mode = "prec_recall")
+
+db$hat <- predict(lr,db)
+db <- db%>%mutate(Pobre_hat=ifelse(hat>=threshold$threshold,1,0))
+db$Pobre_hat <- factor(db$pobre_hat,
+                          levels=c("0","1"),
+                          labels=c("No", "Yes"))
+
+#########
 
 ctrl <-  trainControl(method = "cv",
                     number = 5,
