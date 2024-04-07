@@ -41,7 +41,7 @@ test$db <- "test"
 
 db <- rbind(test,train, fill=TRUE)
 
-x <- c("P6545","P6510", "P6020",
+x <- c("P6545","P6510", 
             "P6580","P6585s1","P6585s2","P6585s3","P6585s4",
             "P6590","P6600","P6620","P6630s1","P6630s2","P6630s3","P6630s4","P6630s6",
             "P7422","P7472",
@@ -64,7 +64,7 @@ model <- model%>%select("id","Pobre","Nper","Dominio","Orden","db","P5140")%>%
          filter(Orden==1)%>%
          left_join(db)
 
-for (i in 7:27) {
+for (i in 7:28) {
   model[[i]]<-model[[i]]/model$Nper 
 }
 
@@ -101,7 +101,7 @@ train$Pobre <- factor(train$Pobre)
 
 lr <- train(model,
             data=train,
-            method = "leapForward",
+            method = "lm",
             trControl = ctrl)
 
 train <- train%>% 
@@ -138,7 +138,7 @@ db$Pobre_hat <- factor(db$pobre_hat,
                           labels=c("No", "Yes"))
 
 #########
-
+arrow::write_parquet(db, sink = "stores/db.parquet")
 db <- arrow::read_parquet("stores/db.parquet")
 train <- db%>%filter(db=="train")
 test <- db%>%filter(db=="test")
