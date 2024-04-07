@@ -41,7 +41,7 @@ test$db <- "test"
 
 db <- rbind(test,train, fill=TRUE)
 
-x <- c("P6545","P6510",
+x <- c("P6545","P6510", "P6020",
             "P6580","P6585s1","P6585s2","P6585s3","P6585s4",
             "P6590","P6600","P6620","P6630s1","P6630s2","P6630s3","P6630s4","P6630s6",
             "P7422","P7472",
@@ -51,7 +51,7 @@ dummy <- function(var){
   case_when({{var}}==1~1,{{var}}==2 | {{var}}==9~0)
 }
 
-model <- db%>%select("id","Pobre","Nper","Dominio","Orden","db", x)%>%
+model <- db%>%select("id","Pobre","Nper","Dominio","Orden","db","P5140", x)%>%
          mutate(across(x,dummy))
 
 count <- function(var){
@@ -60,13 +60,15 @@ count <- function(var){
 
 db <- model%>%summarize(across(x,count), .by=id)
 
-model <- model%>%select("id","Pobre","Nper","Dominio","Orden","db")%>%
+model <- model%>%select("id","Pobre","Nper","Dominio","Orden","db","P5140")%>%
          filter(Orden==1)%>%
          left_join(db)
 
 for (i in 7:27) {
   model[[i]]<-model[[i]]/model$Nper 
 }
+
+model <- model %>% mutate(P5140=replace_na(P5140, 0))
 
 db <- model
 db$Dominio <- as.factor(db$Dominio)
@@ -75,32 +77,39 @@ train <- db%>%filter(db=="train")
 test <- db%>%filter(db=="test")
 
 gc()
+
 ############################################################################-
 # 2. Defining models ----
 ############################################################################-
 
-model <-formula(paste0("Pobre~","Dominio + ",paste0(x, collapse = " + ")))
+model <-formula(paste0("Pobre~","Dominio + ", "P5140 + ",
+                       paste0(x, collapse = " + ")))
 
 ############################################################################-
 # 3. Estimating Linear regression model ----
 ############################################################################-
 
 rule <- 0.5
+set.seed(1492)
 
-lr <- lm(model, 
-         data=train)
+ctrl <-  trainControl(method = "cv",
+                      number = 5,
+                      classProbs = TRUE,
+                      savePredictions = T)
 
-train$hat <- fitted(lr)
+train$Pobre <- factor(train$Pobre)
+
+lr <- train(model,
+            data=train,
+            method = "leapForward",
+            trControl = ctrl)
+
+train <- train%>% 
+        mutate(hat= predict(lr, type = "raw"))   
 
 train <- train%>%mutate(pobre_hat=ifelse(hat>=rule,1,0))
 
-train$Pobre <- factor(train$Pobre,
-                   levels=c("0","1"),
-                   labels=c("No", "Yes"))
-
-train$pobre_hat <- factor(train$pobre_hat,
-                      levels=c("0","1"),
-                      labels=c("No", "Yes"))
+train <- train%>%mutate(across(c("Pobre","pobre_hat"),factor))
 
 confusionMatrix(data = train$pobre_hat, 
                 reference = train$Pobre, 
@@ -114,9 +123,7 @@ threshold <- coords(roc, x = "best", best.method = "closest.topleft")
 
 train <- train%>%mutate(pobre_hat_adj=ifelse(hat>=threshold$threshold,1,0))
 
-train$pobre_hat_adj<- factor(train$pobre_hat_adj,
-                             levels=c("0","1"),
-                             labels=c("No", "Yes"))
+train$pobre_hat_adj<- factor(train$pobre_hat_adj)
 
 confusionMatrix(data = train$pobre_hat_adj, 
                 reference = train$Pobre, 
@@ -124,31 +131,19 @@ confusionMatrix(data = train$pobre_hat_adj,
 
 db$hat <- predict(lr,db)
 db <- db%>%mutate(Pobre_hat=ifelse(hat>=threshold$threshold,1,0))
+
+
 db$Pobre_hat <- factor(db$pobre_hat,
                           levels=c("0","1"),
                           labels=c("No", "Yes"))
 
 #########
 
-ctrl <-  trainControl(method = "cv",
-                    number = 5,
-                    classProbs = TRUE,
-                    savePredictions = T)
+db <- arrow::read_parquet("stores/db.parquet")
+train <- db%>%filter(db=="train")
+test <- db%>%filter(db=="test")
 
-lr <- train(model,
-                data=db%>%filter(db=="train"),
-                method = "glm",
-                family = "binomial",
-                trControl = ctrl)
-            )
 
-,
-                tuneGrid=expand.grid(
-                  alpha = seq(0,1,by=.2),
-                  lambda =10^seq(10, -2, length = 10)
-                )
-                
-)
 
 ############################################################################-
 # 4. Exporting data base to kaggle ----
