@@ -89,7 +89,6 @@ model <-formula(paste0("Pobre~","Dominio + ", "P5140 + ",
 # 3. Estimating Linear regression model ----
 ############################################################################-
 
-rule <- 0.5
 set.seed(1492)
 
 ctrl <-  trainControl(method = "cv",
@@ -97,37 +96,126 @@ ctrl <-  trainControl(method = "cv",
                       classProbs = TRUE,
                       savePredictions = T)
 
-train$Pobre <- factor(train$Pobre)
+train$Pobre <- factor(train$Pobre,
+                      levels=c("0","1"),
+                      labels=c("No", "Yes"))
 
-lr <- train(model,
+logit <- train(model,
+               data=train,
+               trControl = ctrl,
+               metric = "Accuracy",
+               method = "glm",
+               family = "binomial"
+               )
+
+knn <- train(model,
+             data=train,
+             trControl = ctrl,
+             metric = "Accuracy",
+             method = "knn",
+             preProcess = c("center","scale"),
+             use.all = TRUE,
+             tuneGrid = expand.grid(k=seq(1,5,by=1))
+             )
+
+lda <- train(model,
+             data=train,
+             trControl = ctrl,
+             metric = "Accuracy",
+             method = "lda"
+             )
+
+qda <- train(model,
+             data=train,
+             trControl = ctrl,
+             metric = "Accuracy",
+             method = "qda"
+             )
+
+nb <- train(model,
             data=train,
-            method = "lm",
-            trControl = ctrl)
+            trControl = ctrl,
+            metric = "Accuracy",
+            method = "naive_bayes"
+            )
 
-train <- train%>% 
-        mutate(hat= predict(lr, type = "raw"))   
+x <- c("logit","lda","qda","nb")
 
-train <- train%>%mutate(pobre_hat=ifelse(hat>=rule,1,0))
+models <-  data.frame(Model = character(),
+                      Accuracy = numeric(),
+                      Recall = numeric(),
+                      Precision = numeric(),
+                      F1 = numeric())
 
-train <- train%>%mutate(across(c("Pobre","pobre_hat"),factor))
+for (i in x) {
+  model <- get(i)
+  pred <- model$pred$pred
+  obs <- model$pred$obs
+  cm <-confusionMatrix(data = pred, 
+                  reference = obs, 
+                  positive = "Yes",
+                  mode = "prec_recall")
+  accuracy <- cm$overall['Accuracy']
+  recall <- cm$byClass['Recall']
+  precision <- cm$byClass['Precision']
+  f1 <- cm$byClass['F1']
+  models <- rbind(models, data.frame(Model = toupper(i),
+                                             Accuracy = accuracy,
+                                             Recall = recall,
+                                             Precision = precision,
+                                             F1 = f1))
+}
 
-confusionMatrix(data = train$pobre_hat, 
-                reference = train$Pobre, 
-                mode = "prec_recall")
+cm <- data.frame(Threshold = numeric())
 
-roc<-roc(response=as.numeric(train$Pobre),
-         predictor=as.numeric(train$pobre_hat)
-         )
+for (i in x) {
+  model <- get(i)
+  obs <- model$pred$obs
+  pred <- model$pred$Yes
+  roc<-roc(response=obs,predictor=pred)
+  roc <- coords(roc, x = "best", best.method = "closest.topleft")
+  threshold <- roc$threshold
+  cm <- rbind(cm, data.frame(Threshold= threshold))
+}
 
-threshold <- coords(roc, x = "best", best.method = "closest.topleft")
+models <- cbind(models,cm)
 
-train <- train%>%mutate(pobre_hat_adj=ifelse(hat>=threshold$threshold,1,0))
+for (i in seq_along(x)) {
+  model <- x[i]
+  model_name <- i  
+  obs <- model$pred$Yes
+  pred <- model$pred$optimized
+  pred <- factor(ifelse(obs >= models[6, model_name], 1, 0),
+                 labels = c("Yes", "No"))
+}
+
+for (i in x) {
+  model <- get(i)
+  obs <- model$pred$Yes
+  pred <- model$pred$optimized
+  pred <- factor(ifelse(obs>= models[6,as.numeric(gsub("\\D","",i))], 
+                        "Yes", "No"))
+  }
+
+
+logit$pred$optimized <-factor(ifelse(logit$pred$Yes>=models[1,6],1,0),
+            labels=c("Yes","No"))
+
+train <- train%>%mutate(pobre_hat_adj=ifelse(hat<=threshold$threshold,1,0))
 
 train$pobre_hat_adj<- factor(train$pobre_hat_adj)
 
-confusionMatrix(data = train$pobre_hat_adj, 
-                reference = train$Pobre, 
+confusionMatrix(data = train$Pobre, 
+                reference = train$logit, 
+                positive="Yes",
                 mode = "prec_recall")
+
+for (var in list("logit","lda","qda","nb")){
+  train <- train%>% 
+    mutate({{var}}:=predict(!!sym(paste0(var)), 
+                            newdata=train, type = "raw"))%>%
+    left_join(train)
+}
 
 db$hat <- predict(lr,db)
 db <- db%>%mutate(Pobre_hat=ifelse(hat>=threshold$threshold,1,0))
@@ -142,6 +230,9 @@ arrow::write_parquet(db, sink = "stores/db.parquet")
 db <- arrow::read_parquet("stores/db.parquet")
 train <- db%>%filter(db=="train")
 test <- db%>%filter(db=="test")
+train$Pobre <- factor(train$Pobre,
+                       levels=c("0","1"),
+                       labels=c("No", "Yes"))
 
 
 
