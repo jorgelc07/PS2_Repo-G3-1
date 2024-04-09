@@ -41,7 +41,9 @@ p_load(tidyverse , # tidy-data
        caret,
        xtable,
        moments,
-       survey)
+       survey,
+       pROC,
+       MLeval)
 
 # solve package conflicts
 filter = dplyr::filter
