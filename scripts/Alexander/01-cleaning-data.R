@@ -13,7 +13,6 @@ rm (list=ls())
 source("scripts/00_packages.R")
 gc()
 
-
 #Leer los datos - 
 test_hogares      <- read.csv("stores/raw/test_hogares.csv")
 test_personas     <- read.csv("stores/raw/test_personas.csv")
@@ -24,8 +23,8 @@ prop.table(table(train_hogares$Pobre))
 
 #Selección de Variables de interés
 train_p <- train_personas%>%
-  select(id, Clase, Orden, P6020, P6040, P6050, P6090, P6100, P6210, P7472, P7422,
-         P7500s2, P7500s3, P7505, P7510s1, P7510s2, P7510s3, P7510s5, P7510s6, P7510s7, 
+  select(id, Clase, Orden,Dominio,P6020,P6040,P6426,P6050, P6090,P6800,
+         P6100, P6210,P6240, P7472, P7422,
          Pet, Oc, Des, Ina, Ingtot)
 ####################################
 #Lista de variables seleccionadas 
@@ -47,15 +46,25 @@ train_p <- train_personas%>%
 #Ingtot: Ingreso total 
 ###################################################
 train_h <- train_hogares %>% 
-  select(Pobre, id, Clase, P5000, P5010, P5090, Nper, Npersug, Lp, Ingtotugarr, Ingpcug)
-
-glimpse(test_hogares)
-glimpse(test_personas)
-glimpse(train_h)
-glimpse(train_p)
+  select(Pobre, id, Clase, P5000, P5010, P5090,P5140, Nper, Npersug, Lp,
+         Ingtotugarr, Ingpcug)
 
 
-#Crear variables de interes  
+#Pobre: Pobre=1, No pobre=0
+#id:
+#clase:
+#P5000:Incluyendo sala-comedor ¿de cuántos cuartos en total dispone este hogar?
+#P5010: ¿En cuántos de esos cuartos duermen las personas de este hogar? 
+#P5090: La vivienda es propia, la están pagando, en arriendo. subarriendo, En usufructo, ocupante
+#Nper: Personas en el hogar 
+#Npersug:Número de personas en la unidad de gasto
+#Lp:Línea de pobreza
+#Ingtotugarr:Ingreso total de la unidad de gasto con imputación de arriendo. 
+#Ingpcug:Ingreso percápita de la unidad de gasto con imputación de arriendo. 
+
+
+#Tengo 35 variables. Las necesito todas? 
+  # - 3.1 Train
 
 train_p$Genero <- ifelse(train_p$P6020 == 2, 1, 0) %>% as.numeric()
 train_p$Menores_edad <- if_else(train_p$P6040<=14, 1, 0 , missing = NULL)
@@ -66,96 +75,10 @@ train_p <- train_p %>%
          Ocupado = replace_na(Oc, 0),
          Pet = replace_na(Pet,0))
 
-train_p$Clase <- if_else(train_p$Clase== 2, 1, 0 , missing = NULL)
-train_h$Clase <- if_else(train_h$Clase== 2, 1, 0 , missing = NULL)
 
-train_personas_hog <- train_p %>%
-  group_by(id) %>%
-  summarize(edad_jefe_hogar = (P6040)[P6050==1], 
-            sexo_jefe_hogar = (Genero)[P6050==1],
-            nivel_edu_jefe_hogar= (P6210)[P6050==1],
-            num_Menores_edad = sum(Menores_edad, na.rm = TRUE),
-            num_adulto_mayor = sum(adulto_mayor, na.rm = TRUE),
-            jefe_hogar_des = (Desempleado)[P6050==1],
-            jefe_hogar_ina = (Inactivo)[P6050==1],
-            jefe_hogar_oc = (Ocupado)[P6050==1],
-            num_oc_hogar = sum(Ocupado))
-
-train_h <- train_h %>% rename(num_cuartos = P5000, num_cuartos_dormir = P5010) #Se renombran variables
-train_p <- train_p %>% rename(edad = P6040) #se renombran variables
-
-#Uniendo bases
-
-train_h <- left_join(train_h,train_personas_hog)
-colnames(train_h) 
-
-#Creacion de variables en base pegada de hogares
-
-train_h$jefe_hogar_ina2 <- if_else(train_h$edad_jefe_hogar==11, as.integer(1), train_h$jefe_hogar_ina) ##observacion de 11 años que no clasifica como inactivo, desempleado, ocupado se asigna como inactiva
-train_h <- train_h %>% select(-jefe_hogar_ina)# se retira la variable antigua
-train_h <- train_h %>% rename(jefe_hogar_ina = jefe_hogar_ina2)#se renombra la nueva
-
-train_h <- train_h %>% mutate(Numper_por_dor= Nper/num_cuartos_dormir,
-                              Hacinamiento = if_else(Numper_por_dor>3, 1 , 0),
-                              Ocupados_por_perhog = if_else(num_oc_hogar>0, Npersug/num_oc_hogar, as.double(Npersug)))
-
-#Variables con NA´s
-
-#Personas
-missing_percentage <-sapply(train_p, function(y) sum(length(which(is.na(y))))/length(train_p$id))
-data_x <- as.data.frame(missing_percentage)
-var <- cbind(Var_name = rownames(data_x), data_x)
-rownames(var) <- 1:nrow(var)
-var_delete <- var[var$missing_percentage>0.5,]
-var_keep <- var[var$missing_percentage<=0.5,]
-count(var) # Contamos cuantas variables tenemos en total 
-count(var_keep) # Contamos cuantas variables tienen % missing menor o igual a 50%
-count(var_delete) # Contamos cuantas variables tienen % missing mayor a 50% 
-
-conteo_variables <- data.frame( total_var = nrow(var),
-                                keep_bar = nrow(var_keep),
-                                delete_var = nrow(var_delete))
-
-conteo_variables #Tabla de clasificación de variables
-
-vector_var <- as.vector(var_keep[1]) #Llevamos las variables que trabajaremos a un vector
-
-train_p <- train_p %>% select(all_of(vector_var$Var_name))
-
-sapply(train_p, function(x) sum(is.na(x))) %>% as.data.frame()
-
-#Hogares
-missing_percentage2 <-sapply(train_h, function(y) sum(length(which(is.na(y))))/length(train_h$id))
-data_x2 <- as.data.frame(missing_percentage2)
-var2 <- cbind(Var_name = rownames(data_x2), data_x2)
-rownames(var2) <- 1:nrow(var2)
-var_delete2 <- var2[var2$missing_percentage2>0.5,]
-var_keep2 <- var2[var2$missing_percentage2<=0.5,]
-count(var2) # Contamos cuantas variables tenemos en total 
-count(var_keep2) # Contamos cuantas variables tienen % missing menor o igual a 50%
-count(var_delete2) # Contamos cuantas variables tienen % missing mayor a 50% 
-
-conteo_variables2 <- data.frame( total_var = nrow(var2),
-                                 keep_bar = nrow(var_keep2),
-                                 delete_var = nrow(var_delete2))
-
-conteo_variables2 #Tabla de clasificación de variables
-
-vector_var2 <- as.vector(var_keep2[1]) #Llevamos las variables que trabajaremos a un vector
-
-train_h <- train_h %>% select(all_of(vector_var2$Var_name))
-
-sapply(train_h, function(x) sum(is.na(x))) %>% as.data.frame() #no se excluyen variables
-
-#Mutamos factores
-
-names(train_p)
-names(train_h)
-
-#Factores de Personas
-
+#Cambiar las variables que son factores: 
 train_p <- train_p %>% mutate(Clase=factor(Clase,levels=c(0,1),labels=c("Urbano","Rural")),
-                              Genero=factor(Genero,levels=c(0,1),labels=c("Hombre","Mujer")),
+                              #Genero=factor(Genero,levels=c(0,1),labels=c("Hombre","Mujer")),
                               Parentesco_con_jefe=factor(P6050,levels=c(1,2,3,4,5,6,7,8,9),labels=c("jefe", "pareja", "Hijo/hija", "nieto", "otro", "emplead_servicio", "pensionista", "trabajador", "otro_no_pariente")),
                               nivel_edu=factor(P6210,levels=c(1,2,3,4,5,6,9),labels=c("Ninguno", "Preescolar", "Basica_primaria", "Basica_secundaria", "Media", "Superior", "No_Saber")),
                               Desempleado=factor(Desempleado,levels=c(0,1),labels=c("No","Si")),
@@ -163,49 +86,85 @@ train_p <- train_p %>% mutate(Clase=factor(Clase,levels=c(0,1),labels=c("Urbano"
                               Ocupado=factor(Ocupado,levels=c(0,1),labels=c("No","Si")),
                               Pet=factor(Pet,levels=c(0,1),labels=c("No","Si")))
 
-train_p <- train_p %>% select(-P6020, -P6050, -P6210) # se creo una nueva variable con factores y se elimino la anterior
+  
+  # - Edad (Sólo mayores de 18 años)
+  train_p <- rename(train_p, c("edad" = "P6040"))
+  train_p$edad_2 <- train_p$edad^2
+  
+  # - Estudiante
+  train_p$estudiante <- ifelse(train_p$P6240 == 3, 1, 0)
+  train_p$estudiante[train_p$P6240 != 3] <- 0
+  train_p$estudiante[train_p$P6240 == "."] <- 0
+  train_p$estudiante[is.na(train_p$estudiante)] <- 0
+  
+  # - Busca trabajo
+  train_p$busca_trabajo <- ifelse(train_p$P6240 == 2, 1, 0)
+  train_p$busca_trabajo[train_p$P6240 != 2] <- 0
+  train_p$busca_trabajo[train_p$P6240 == "."] <- 0
+  train_p$busca_trabajo[is.na(train_p$busca_trabajo)] <- 0
+  
+  # - Amo(a) de casa
+  train_p$amo_casa <- ifelse(train_p$P6240 == 4, 1, 0)
+  train_p$amo_casa[train_p$P6240 != 4] <- 0
+  train_p$amo_casa[train_p$P6240 == "."] <- 0
+  train_p$amo_casa[is.na(train_p$amo_casa)] <- 0
+  
+  # - Hijos en el hogar
+  train_p$hijos_hogar <- ifelse(train_p$P6050 == 3, 1, 0)
+  train_p$hijos_hogar[train_p$P6050 != 3] <- 0
+  train_p$hijos_hogar[train_p$P6050 == "."] <- 0
+  train_p$hijos_hogar[is.na(train_p$hijos_hogar)] <- 0
 
-head(train_p)
+  # - Experiencia trabajo actual
+  
+  train_p <- rename(train_p, c("exp_trab_actual" = "P6426"))
+  
+  # - Horas de trabajo a la semana
+   train_p <- rename(train_p, c("horas_trab_usual" = "P6800"))
+  
+  # - Ciudad
+  train_p <- rename(train_p, c("ciudad" = "Dominio"))
+  
+  # - Número de Cuartos
+ # train_p <- rename(train_p, c("numero_cuartos" = "P5010"))
+  
+  # - Número de personas
+ # train_p <- rename(train_p, c("numero_personas" = "Nper"))
+  
+  # - Imputación de experiencia
+  train_p$exp_trab_actual <- ifelse(train_p$edad < 18 & 
+                                   is.na(train_p$exp_trab_actual), 0, 
+                                 train_p$exp_trab_actual)
+  
+  # Imputación Horas 
+  train_p$horas_trab_usual <- ifelse(train_p$edad < 18 & 
+                                    is.na(train_p$horas_trab_usual), 0, 
+                                  train_p$horas_trab_usual)
+
+ train_p<- train_p %>% select("id", "Orden", "Clase",
+                                  "ciudad", "edad", "edad_2", "Genero", 
+                                  "estudiante", "busca_trabajo", "amo_casa",
+                                  "hijos_hogar", "Ingtot",, "exp_trab_actual",
+                                  "horas_trab_usual", 
+                                  "Menores_edad","adulto_mayor","Desempleado","Inactivo",
+                                  "Ocupado","Parentesco_con_jefe","nivel_edu","edad_2","estudiante",
+                                  "busca_trabajo","amo_casa","hijos_hogar")
 
 
-#Factores de Hogares
+#Hogares
+ train_h <- train_h %>% rename(num_cuartos = P5000, num_cuartos_dormir = P5010) #Se renombran variables
 
+ #Creacion de variables en base pegada de hogares
 train_h <- train_h %>% mutate(Pobre=factor(Pobre,levels=c(0,1),labels=c("No_Pobre","Pobre")),
                               Clase=factor(Clase,levels=c(0,1),labels=c("Urbano","Rural")),
-                              Vivienda=factor(P5090,levels=c(1,2,3,4,5,6),labels=c("Propia_paga","Propia_No_Paga", "Arriendo","Usufructo", "Ocupante_No_Dueño", "Otra")),
-                              sexo_jefe_hogar=factor(sexo_jefe_hogar,levels=c(0,1),labels=c("Hombre","Mujer")),
-                              nivel_edu_jefe_hogar=factor(nivel_edu_jefe_hogar,levels=c(1,2,3,4,5,6,9),labels=c("Ninguno", "Preescolar", "Basica_primaria", "Basica_secundaria", "Media", "Superior", "No_Saber")),
-                              jefe_hogar_des=factor(jefe_hogar_des,levels=c(0,1),labels=c("No","Si")),
-                              jefe_hogar_ina=factor(jefe_hogar_ina,levels=c(0,1),labels=c("No","Si")),
-                              jefe_hogar_oc=factor(jefe_hogar_oc,levels=c(0,1),labels=c("No","Si")),
-                              Hacinamiento = factor(Hacinamiento, levels = c(0,1), labels = c("No","Si")))
-##Estadisticas descriptivas con variables originales 
+                              Vivienda=factor(P5090,levels=c(1,2,3,4,5,6),labels=c("Propia_paga","Propia_No_Paga", "Arriendo","Usufructo", "Ocupante_No_Dueño", "Otra")))
 
-trainh_ed <- train_h %>% select(Nper, Ingpcug, num_oc_hogar, sexo_jefe_hogar)
-p_load(GGally)
-ggpairs(trainh_ed, columns = 1:3, ggplot2::aes(colour = sexo_jefe_hogar)) + theme_bw()
+train_h <- train_h %>% select("id","Clase","num_cuartos","num_cuartos_dormir","Nper"
+                              ,"Npersug","Lp","Ingtotugarr","Ingpcug","Vivienda")
 
-train_h <- train_h %>% select(-P5090) # se creo una nueva variable con factores y se elimino la anterior
-
-glimpse(train_h)
-
-#Copia de la BD ajustada - Para usar sin Dummys
-train_h_factores <- train_h
-
-#Generamos dummys en Train_Personas
-
-train_p <- dummy_cols(train_p, 
-                      select_columns = c("Clase", "Pet", "Genero", "Desempleado", "Inactivo", "Ocupado", "Parentesco_con_jefe", "nivel_edu", "no_ingresos"), 
-                      remove_selected_columns = TRUE)
-
-glimpse(train_p)
-
-#Generamos dummys en Train_Hogares
-
-train_h <- dummy_cols(train_h, 
-                      select_columns = c("Pobre", "Clase", "Vivienda", "sexo_jefe_hogar", "nivel_edu_jefe_hogar", "jefe_hogar_des", "jefe_hogar_oc", "jefe_hogar_ina", "Hacinamiento"), 
-                      remove_selected_columns = TRUE)
-
-glimpse(train_h)
-
-train_hp3 <-train_h
+train <- merge(train_h,train_p,
+  by = 'id', 
+  no.dups = TRUE,
+ all = TRUE,
+suffixes = "")
+saveRDS(train, "stores/train_clean.rds")
