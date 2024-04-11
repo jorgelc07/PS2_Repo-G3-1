@@ -171,11 +171,26 @@ train_p <- rename(train_p, c("ciudad" = "Dominio"))
 train_p$exp_trab_actual <-ifelse(train_p$edad < 18 & 
                                    is.na(train_p$exp_trab_actual), 0, 
                                  train_p$exp_trab_actual)
-  
+
+train_p <- train_p %>% 
+  group_by(id) %>% 
+  mutate(mean_h = mean(horas_trab_usual, na.rm = TRUE)) %>% 
+  ungroup() %>% 
+  mutate(horas_trab_usual = if_else(is.na(horas_trab_usual) & train_p$edad >= 18, 
+                                    mean_h, train_p$horas_trab_usual))
+
 #-Imputación Horas 
 train_p$horas_trab_usual <-ifelse(train_p$edad < 18 & 
                                     is.na(train_p$horas_trab_usual), 0, 
                                   train_p$horas_trab_usual)
+
+train_p <- train_p %>% 
+  group_by(id) %>% 
+  mutate(variable = ifelse(all(is.na(horas_trab_usual)), 0, 
+                           horas_trab_usual)) %>% 
+  ungroup() %>% 
+  mutate(horas_trab_usual = if_else(is.na(horas_trab_usual), 
+                                    variable, train_p$horas_trab_usual))
 
 train_p<- train_p %>% select("id", "Orden", "Clase",
                                   "ciudad", "edad", "edad_2", "Genero", 
