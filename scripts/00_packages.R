@@ -7,12 +7,13 @@ if(!require(pacman)){install.packages("pacman") ; require(pacman)}
 
 p_load(tidyverse , # tidy-data
        rio, # read/write data from almost any file format
-       dtplyr, # lazy_dt function for handling large amount of data
+       dplyr, # lazy_dt function for handling large amount of data
        stringr, # string functions
        data.table, # function: rbindlist()
        janitor, # function: clean_names()
        leaflet, # interactive html maps
        exactextractr,
+       vctrs,
        ggpattern,  # pattern fill for ggplot objects
        kableExtra, # making nice latex tables
        nngeo, # st_nn to do the distance to the nearest neigbour
@@ -41,7 +42,9 @@ p_load(tidyverse , # tidy-data
        caret,
        xtable,
        moments,
-       survey)
+       survey,
+       pROC,
+       MLeval)
 
 # solve package conflicts
 here <- here::here()

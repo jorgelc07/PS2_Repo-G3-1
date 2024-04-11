@@ -11,8 +11,6 @@
 
 rm (list=ls())
 source("scripts/00_packages.R")
-library(pROC)
-library(MLeval)
 gc()
 
 ############################################################################-
@@ -39,39 +37,48 @@ test<- merge(test,db,
 
 test$db <- "test"
 
-db <- rbind(test,train, fill=TRUE)
+db <- rbind(test,train, fill=TRUE) # A single database to transform all variables
 
-x <- c("P6545","P6510", 
-            "P6580","P6585s1","P6585s2","P6585s3","P6585s4",
-            "P6590","P6600","P6620","P6630s1","P6630s2","P6630s3","P6630s4","P6630s6",
-            "P7422","P7472",
-            "P7495","P7500s2","P7500s3","P7505")
+# Variables used by DANE to calculate household income
+
+db <- db%>%mutate(P6240=ifelse(is.na(P6240),0,
+                                  ifelse(P6240==1,1,
+                                         ifelse(P6240==2,2,
+                                                ifelse(P6240>=3,3,0))))) # Defining a PEA proxy
+
+x <- c( "P6545","P6510", #Employed income variables
+        "P6580","P6585s1","P6585s2","P6585s3","P6585s4", 
+        "P6590","P6600","P6620","P6630s1","P6630s2","P6630s3","P6630s4","P6630s6", 
+        "P7422","P7472", #Unemployed and Outside the labour force income variables
+        "P7495","P7500s2","P7500s3","P7505") #All 
 
 dummy <- function(var){
   case_when({{var}}==1~1,{{var}}==2 | {{var}}==9~0)
 }
 
-model <- db%>%select("id","Pobre","Nper","Dominio","Orden","db","P5140", x)%>%
-         mutate(across(x,dummy))
+model <- db%>%select("id","Pobre","Nper","Dominio","Orden","db",
+                     "P5140","P6240", x)%>%
+         mutate(across(x,dummy)) # Transforming variables into dummy variables (1 = Yes, 0 = No | NSNR)
 
 count <- function(var){
     sum({{var}}, na.rm = TRUE)
   }
 
-db <- model%>%summarize(across(x,count), .by=id)
+db <- model%>%summarize(across(x,count), .by=id) #Counting people who contribute to household income
 
-model <- model%>%select("id","Pobre","Nper","Dominio","Orden","db","P5140")%>%
+model <- model%>%select("id","Pobre","Nper","Dominio","Orden","db",
+                        "P6240","P5140")%>%
          filter(Orden==1)%>%
          left_join(db)
 
-for (i in 7:28) {
+for (i in 9:29) {
   model[[i]]<-model[[i]]/model$Nper 
-}
+} #Calculating as percentage
 
-model <- model %>% mutate(P5140=replace_na(P5140, 0))
+model <- model %>% mutate(P5140=replace_na(P5140, 0)) # Rent expense varaible
 
 db <- model
-db$Dominio <- as.factor(db$Dominio)
+db$Dominio <- as.factor(db$Dominio) # Geographical criteria for poverty lines
 
 train <- db%>%filter(db=="train")
 test <- db%>%filter(db=="test")
@@ -82,11 +89,11 @@ gc()
 # 2. Defining models ----
 ############################################################################-
 
-model <-formula(paste0("Pobre~","Dominio + ", "P5140 + ",
+model <-formula(paste0("Pobre~","Dominio + P5140 + P6240 + ",
                        paste0(x, collapse = " + ")))
 
 ############################################################################-
-# 3. Estimating Linear regression model ----
+# 3. Estimating models ----
 ############################################################################-
 
 set.seed(1492)
@@ -108,15 +115,16 @@ logit <- train(model,
                family = "binomial"
                )
 
-knn <- train(model,
-             data=train,
-             trControl = ctrl,
-             metric = "Accuracy",
-             method = "knn",
-             preProcess = c("center","scale"),
-             use.all = TRUE,
-             tuneGrid = expand.grid(k=seq(1,5,by=1))
-             )
+#Too many ties error don't run knn model
+#knn <- train(model,
+ #            data=train,
+  #           trControl = ctrl,
+   #          metric = "Accuracy",
+    #         method = "knn",
+     #        preProcess = c("center","scale"),
+      #       use.all = TRUE,
+       #      tuneGrid = expand.grid(k=seq(1,5,by=1))
+        #     )
 
 lda <- train(model,
              data=train,
@@ -139,7 +147,13 @@ nb <- train(model,
             method = "naive_bayes"
             )
 
+############################################################################-
+# 4. Alternative cutoffs ----
+############################################################################-
+
 x <- c("logit","lda","qda","nb")
+
+# Extracting performance metrics
 
 models <-  data.frame(Model = character(),
                       Accuracy = numeric(),
@@ -166,6 +180,8 @@ for (i in x) {
                                              F1 = f1))
 }
 
+# Calculating optimized cutoffs
+
 cm <- data.frame(Threshold = numeric())
 
 for (i in x) {
@@ -176,78 +192,86 @@ for (i in x) {
   roc <- coords(roc, x = "best", best.method = "closest.topleft")
   threshold <- roc$threshold
   cm <- rbind(cm, data.frame(Threshold= threshold))
-}
+} 
 
 models <- cbind(models,cm)
 
-for (i in seq_along(x)) {
-  model <- x[i]
-  model_name <- i  
-  obs <- model$pred$Yes
-  pred <- model$pred$optimized
-  pred <- factor(ifelse(obs >= models[6, model_name], 1, 0),
-                 labels = c("Yes", "No"))
-}
+# Prediction based on optimized cutoffs
 
-for (i in x) {
-  model <- get(i)
-  obs <- model$pred$Yes
-  pred <- model$pred$optimized
-  pred <- factor(ifelse(obs>= models[6,as.numeric(gsub("\\D","",i))], 
-                        "Yes", "No"))
+#Don't run this loop doesn't work 
+for (i in seq_along(x)) {
+  threshold <- models[i, 6]
+  for (j in x) {
+    model <- get(j)
+    model$pred$Optimized <- factor(ifelse(model$pred$Yes>=threshold,1,0),
+                                   labels = c("Yes"))
+    assign(j, model, envir = .GlobalEnv)
   }
+}
 
 
 logit$pred$optimized <-factor(ifelse(logit$pred$Yes>=models[1,6],1,0),
-            labels=c("Yes","No"))
+                              levels=c("0","1"),
+                              labels=c("Yes","No"))
+lda$pred$optimized <-factor(ifelse(lda$pred$Yes>=models[2,6],1,0),
+                            levels=c("0","1"),
+                            labels=c("Yes","No"))
+qda$pred$optimized <-factor(ifelse(qda$pred$Yes>=models[3,6],1,0),
+                            levels=c("0","1"),
+                            labels=c("Yes","No"))
+nb$pred$optimized <-factor(ifelse(nb$pred$Yes>=models[4,6],1,0),
+                           levels=c("0","1"),
+                           labels=c("Yes","No"))
 
-train <- train%>%mutate(pobre_hat_adj=ifelse(hat<=threshold$threshold,1,0))
+# Optimized performance metrics 
 
-train$pobre_hat_adj<- factor(train$pobre_hat_adj)
+threshold <-  data.frame(Model = character(),
+                      Accuracy = numeric(),
+                      Recall = numeric(),
+                      Precision = numeric(),
+                      F1 = numeric())
 
-confusionMatrix(data = train$Pobre, 
-                reference = train$logit, 
-                positive="Yes",
-                mode = "prec_recall")
-
-for (var in list("logit","lda","qda","nb")){
-  train <- train%>% 
-    mutate({{var}}:=predict(!!sym(paste0(var)), 
-                            newdata=train, type = "raw"))%>%
-    left_join(train)
+for (i in x) {
+  model <- get(i)
+  pred <- model$pred$optimized
+  obs <- model$pred$obs
+  cm <-confusionMatrix(data = pred, 
+                       reference = obs, 
+                       positive = "Yes",
+                       mode = "prec_recall")
+  accuracy <- cm$overall['Accuracy']
+  recall <- cm$byClass['Recall']
+  precision <- cm$byClass['Precision']
+  f1 <- cm$byClass['F1']
+  threshold <- rbind(threshold, data.frame(Model = toupper(i),
+                                     Accuracy = accuracy,
+                                     Recall = recall,
+                                     Precision = precision,
+                                     F1 = f1))
 }
-
-db$hat <- predict(lr,db)
-db <- db%>%mutate(Pobre_hat=ifelse(hat>=threshold$threshold,1,0))
-
-
-db$Pobre_hat <- factor(db$pobre_hat,
-                          levels=c("0","1"),
-                          labels=c("No", "Yes"))
-
-#########
-arrow::write_parquet(db, sink = "stores/db.parquet")
-db <- arrow::read_parquet("stores/db.parquet")
-train <- db%>%filter(db=="train")
-test <- db%>%filter(db=="test")
-train$Pobre <- factor(train$Pobre,
-                       levels=c("0","1"),
-                       labels=c("No", "Yes"))
-
-
 
 ############################################################################-
 # 4. Exporting data base to kaggle ----
 ############################################################################-
 
-predictSample <- test   %>% 
-  mutate(pobre_lab = predict(model1, newdata = test, type = "raw")    ## predicted class labels
-  )  %>% select(id,pobre_lab)
+test<- test%>% 
+       mutate(logit = predict(logit, newdata = test, type = "raw"),
+              lda = predict(lda, newdata = test, type = "raw"),
+              qda = predict(qda, newdata = test, type = "raw"),
+              nb = predict(nb, newdata = test, type = "raw")
+              )
+test<- test%>% 
+  mutate(logit =ifelse(logit=="Yes",1,0),
+         lda =ifelse(lda=="Yes",1,0),
+         qda =ifelse(qda=="Yes",1,0),
+         nb =ifelse(nb=="Yes",1,0)
+  )
 
-predictSample<- predictSample %>% 
-  mutate(pobre=ifelse(pobre_lab=="Yes",1,0)) %>% 
-  select(id,pobre)
+for (i in x) {
+    pred <- test %>% select(id, !!sym(i))
+    colnames(pred) <- c("id", "pobre")
+    write.csv(pred, paste0("stores/Submissions/Jaime/", i, ".csv"),
+                           row.names = FALSE)
+}
 
-template<-read.csv("data/sample_submission.csv")
-
-write.csv(predictSample,"classification_elasticnet.csv", row.names = FALSE)
+#End
