@@ -38,7 +38,8 @@ logit <- train(
   trControl = ctrl,
   metric = "Accuracy",
   family = "binomial",
-  method = "glmnet"
+  method = "glmnet",
+  data=train
 )
 
 #Reaizar la predicción fuera de la muestra
@@ -77,7 +78,7 @@ write.csv(submit,"stores/Submissions/Alexander/classification_qda.csv",row.names
 
 #Modelo 3: LDA
 set.seed(1492)
-qda <- train(
+lda <- train(
   Pobre ~ edad + edad_2 + Genero + estudiante + busca_trabajo +
     amo_casa + primaria + secundaria + media + superior+
     num_cuartos+contributivo+num_adulto+rural+vivienda_arriendo,
