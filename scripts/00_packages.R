@@ -44,7 +44,13 @@ p_load(tidyverse , # tidy-data
        moments,
        survey,
        pROC,
-       MLeval)
+       MLeval,
+       tidyverse,
+       rpart,
+       caret, 
+       randomForest,
+       ipred,
+       gdm)
 
 # solve package conflicts
 here <- here::here()
