@@ -48,7 +48,16 @@ knitr::opts_chunk$set(echo = TRUE, fig.pos = 'H')
 
 ## Procesamiento de Datos
 
+### Consolidación de base "clean"
+
+### Construcción de variables (feature engineering)
+
+### Ejercicio con variables DANE
+
+
 ## Análisis Descriptivo
+
+
 
 # Modelos y resultados
 
@@ -56,7 +65,9 @@ knitr::opts_chunk$set(echo = TRUE, fig.pos = 'H')
 
 ## Modelos de Predicción de Ingreso
 
-## Modelos Finales
+## Modelos Finales (QDA) 
+
+
 
 # Conclusiones
 
